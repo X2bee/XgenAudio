@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from controller.router import audio_router
 from service.stt.stt_factory import STTFactory
 from service.tts.tts_factory import TTSFactory
-from service.redis.config_utils import get_stt_config, get_tts_config, check_tts_config
+from service.redis.config_utils import get_stt_config, get_tts_config
 
 # 환경 변수 로드
 load_dotenv()
@@ -37,7 +37,6 @@ async def lifespan(app: FastAPI):
     # STT 서비스 초기화
     try:
         logger.info("STT 설정 확인 중...")
-        logger.info(check_tts_config())
         stt_config = get_stt_config()
         is_stt_available = stt_config.is_available_stt
         logger.info(f"STT 활성화 상태: {is_stt_available}")
