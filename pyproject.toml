@@ -1,0 +1,178 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xgen-audio"
+version = "1.0.0"
+description = "음성 인식(STT) 및 음성 합성(TTS) 서비스를 제공하는 API 서버"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "XgenAudio Team"}
+]
+keywords = ["stt", "tts", "audio", "speech", "fastapi"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Framework :: FastAPI",
+]
+
+dependencies = [
+    # FastAPI & Web Framework
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+
+    # Redis
+    "redis>=5.0.0",
+
+    # Environment & Configuration
+    "python-dotenv>=1.0.0",
+
+    # Audio Processing (lightweight - no librosa/numba to avoid llvmlite build issues)
+    "soundfile>=0.12.0",
+    "numpy>=1.24.0,<2.0.0",
+    "scipy>=1.11.0",
+    "audioread>=3.0.0",
+
+    # Deep Learning (PyTorch)
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+
+    # Transformers & HuggingFace
+    "transformers>=4.35.0",
+    "accelerate>=0.24.0",
+
+    # Logging & Utilities
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.10.0",
+    "flake8>=6.1.0",
+    "mypy>=1.6.0",
+    "isort>=5.12.0",
+]
+
+# 고급 오디오 처리가 필요한 경우 (librosa 포함)
+audio-advanced = [
+    "librosa>=0.10.0",
+    "numba>=0.58.0",
+]
+
+all = [
+    "xgen-audio[dev,audio-advanced]",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/xgen-audio"
+Documentation = "https://github.com/your-org/xgen-audio/docs"
+Repository = "https://github.com/your-org/xgen-audio"
+Issues = "https://github.com/your-org/xgen-audio/issues"
+
+[project.scripts]
+xgen-audio = "main:main"
+
+[tool.setuptools]
+packages = ["controller", "service"]
+
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.md"]
+
+# Black 설정
+[tool.black]
+line-length = 120
+target-version = ['py39', 'py310', 'py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+# isort 설정
+[tool.isort]
+profile = "black"
+line_length = 120
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+# pytest 설정
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "-ra",
+    "-q",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=controller",
+    "--cov=service",
+]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+# mypy 설정
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "transformers.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "torch.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "librosa.*"
+ignore_missing_imports = true
+
+# Coverage 설정
+[tool.coverage.run]
+source = ["controller", "service"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/virtualenv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
