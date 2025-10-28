@@ -7,7 +7,7 @@ name = "xgen-audio"
 version = "1.0.0"
 description = "음성 인식(STT) 및 음성 합성(TTS) 서비스를 제공하는 API 서버"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.14.*"
 license = {text = "MIT"}
 authors = [
     {name = "XgenAudio Team"}
@@ -53,6 +53,9 @@ dependencies = [
     # Logging & Utilities
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+
+    # Mlflow
+    "mlflow>=
 ]
 
 [project.optional-dependencies]

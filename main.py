@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
         app.state.config_composer = redis_config_manager
         logger.info("✅ Redis 설정 관리자 초기화 완료")
     except Exception as e:
-        logger.error(f"❌ Redis 설��� 관리자 초기화 실패: {e}", exc_info=True)
+        logger.error(f"❌ Redis 설정 관리자 초기화 실패: {e}", exc_info=True)
         app.state.config_composer = None
 
     # STT 서비스 초기화
