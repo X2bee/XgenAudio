@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from controller.router import audio_router
 from service.stt.stt_factory import STTFactory
 from service.tts.tts_factory import TTSFactory
-from service.redis.config_utils import get_stt_config, get_tts_config
+from service.redis_client.redis_config_manager import RedisConfigManager
 
 # 환경 변수 로드
 load_dotenv()
@@ -34,40 +34,60 @@ async def lifespan(app: FastAPI):
     # 시작 시
     logger.info("🚀 XgenAudio API 서버 시작 중...")
 
-    # STT 서비스 초기화
+    # Redis 설정 관리자 초기화
     try:
-        logger.info("STT 설정 확인 중...")
-        stt_config = get_stt_config()
-        is_stt_available = stt_config.is_available_stt
-        logger.info(f"STT 활성화 상태: {is_stt_available}")
-
-        if is_stt_available:
-            logger.info("STT 서비스 초기화 중...")
-            app.state.stt_service = STTFactory.create_stt_client()
-            logger.info("✅ STT 서비스 초기화 완료")
-        else:
-            app.state.stt_service = None
-            logger.info("⚠️  STT 서비스 비활성화됨")
+        logger.info("Redis 설정 관리자 초기화 중...")
+        redis_config_manager = RedisConfigManager()
+        app.state.config_composer = redis_config_manager
+        logger.info("✅ Redis 설정 관리자 초기화 완료")
     except Exception as e:
-        logger.error(f"❌ STT 서비스 초기화 실패: {e}", exc_info=True)
+        logger.error(f"❌ Redis 설��� 관리자 초기화 실패: {e}", exc_info=True)
+        app.state.config_composer = None
+
+    # STT 서비스 초기화
+    if app.state.config_composer:
+        try:
+            logger.info("STT 설정 확인 중...")
+            stt_config = app.state.config_composer.get_config_by_category_name("stt")
+            logger.info(f'stt_config : {stt_config}')
+            is_stt_available = stt_config.get('is_available_stt',False)
+            logger.info(f"STT 활성화 상태: {is_stt_available}")
+
+            if is_stt_available:
+                logger.info("STT 서비스 초기화 중...")
+                app.state.stt_service = STTFactory.create_stt_client(app.state.config_composer)
+                logger.info("✅ STT 서비스 초기화 완료")
+            else:
+                app.state.stt_service = None
+                logger.info("⚠️  STT 서비스 비활성화됨")
+        except Exception as e:
+            logger.error(f"❌ STT 서비스 초기화 실패: {e}", exc_info=True)
+            app.state.stt_service = None
+    else:
+        logger.warning("⚠️  Redis 설정 관리자가 없어 STT 서비스를 초기화할 수 없습니다")
         app.state.stt_service = None
 
     # TTS 서비스 초기화
-    try:
-        tts_config = get_tts_config()
-        logger.info("TTS 설정 확인 중...")
-        is_tts_available = tts_config.is_available_tts
-        logger.info(f"TTS 활성화 상태: {is_tts_available}")
+    if app.state.config_composer:
+        try:
+            logger.info("TTS 설정 확인 중...")
+            tts_config = app.state.config_composer.get_config_by_category_name("tts")
+            is_tts_available = tts_config.get('is_available_tts', False)
+            logger.info(f'tts_config : {tts_config}')
+            logger.info(f"TTS 활성화 상태: {is_tts_available}")
 
-        if is_tts_available:
-            logger.info("TTS 서비스 초기화 중...")
-            app.state.tts_service = TTSFactory.create_tts_client()
-            logger.info("✅ TTS 서비스 초기화 완료")
-        else:
+            if is_tts_available:
+                logger.info("TTS 서비스 초기화 중...")
+                app.state.tts_service = TTSFactory.create_tts_client(app.state.config_composer)
+                logger.info("✅ TTS 서비스 초기화 완료")
+            else:
+                app.state.tts_service = None
+                logger.info("⚠️  TTS 서비스 비활성화됨")
+        except Exception as e:
+            logger.error(f"❌ TTS 서비스 초기화 실패: {e}", exc_info=True)
             app.state.tts_service = None
-            logger.info("⚠️  TTS 서비스 비활성화됨")
-    except Exception as e:
-        logger.error(f"❌ TTS 서비스 초기화 실패: {e}", exc_info=True)
+    else:
+        logger.warning("⚠️  Redis 설정 관리자가 없어 TTS 서비스를 초기화할 수 없습니다")
         app.state.tts_service = None
 
     logger.info("✨ XgenAudio API 서버 시작 완료")
@@ -153,7 +173,7 @@ if __name__ == "__main__":
 
     # 환경 변수에서 설정 읽기
     host = os.getenv("API_HOST", "0.0.0.0")
-    port = int(os.getenv("API_PORT", "8020"))
+    port = int(os.getenv("API_PORT", "8000"))
 
     uvicorn.run(
         "main:app",

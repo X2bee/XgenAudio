@@ -7,7 +7,7 @@ from typing import Dict, Any
 import logging
 from service.stt.base_stt import BaseSTT
 from service.stt.huggingface_stt import HuggingFaceSTT
-from service.redis.config_utils import get_stt_config
+
 logger = logging.getLogger("stt.factory")
 
 class STTFactory:
@@ -23,12 +23,12 @@ class STTFactory:
     _last_config_hash = None
 
     @classmethod
-    def create_stt_client(cls) -> BaseSTT:
-        stt_config = get_stt_config()
-        provider = stt_config.STT_PROVIDER.lower()
+    def create_stt_client(cls, config_composer) -> BaseSTT:
+        stt_config = config_composer.get_config_by_category_name("stt")
+        provider = stt_config.STT_PROVIDER.value.lower()
 
         # 설정 해시 생성 (설정이 변경되었는지 확인용)
-        config_hash = cls._generate_config_hash(provider, stt_config)
+        config_hash = cls._generate_config_hash(provider, config_composer)
 
         # 기존 인스턴스가 있고 설정이 동일하면 재사용
         if cls._instance is not None and cls._last_config_hash == config_hash:
@@ -44,7 +44,7 @@ class STTFactory:
             available_providers = list(cls.PROVIDERS.keys())
             raise ValueError(f"Unsupported STT provider: {provider}. Available: {available_providers}")
 
-        config = cls._prepare_config(provider, stt_config)
+        config = cls._prepare_config(provider, config_composer)
 
         try:
             stt_class = cls.PROVIDERS[provider]
@@ -65,30 +65,34 @@ class STTFactory:
             raise
 
     @classmethod
-    def _generate_config_hash(cls, provider: str, stt_config) -> str:
+    def _generate_config_hash(cls, provider: str, config_composer) -> str:
         """설정 변경 감지를 위한 해시 생성"""
+        stt_config = config_composer.get_config_by_category_name("stt")
+
         if provider == "huggingface":
-            config_str = f"{provider}:{stt_config.HUGGINGFACE_STT_MODEL_NAME}:{stt_config.HUGGING_FACE_HUB_TOKEN}:{stt_config.HUGGINGFACE_STT_MODEL_DEVICE}"
+            config_str = f"{provider}:{stt_config.HUGGINGFACE_STT_MODEL_NAME.value}:{config_composer.get_config_by_name('HUGGING_FACE_HUB_TOKEN').value}:{stt_config.HUGGINGFACE_STT_MODEL_DEVICE.value}"
         elif provider == "openai":
-            config_str = f"{provider}:{stt_config.OPENAI_API_KEY}:{stt_config.OPENAI_STT_MODEL_NAME}"
+            config_str = f"{provider}:{config_composer.get_config_by_name('OPENAI_API_KEY').value}:{stt_config.OPENAI_STT_MODEL_NAME.value}"
         else:
             config_str = provider
 
         return str(hash(config_str))
 
     @classmethod
-    def _prepare_config(cls, provider: str, stt_config) -> Dict[str, Any]:
+    def _prepare_config(cls, provider: str, config_composer) -> Dict[str, Any]:
+        stt_config = config_composer.get_config_by_category_name("stt")
+
         if provider == "huggingface":
             return {
-                "model_name": stt_config.HUGGINGFACE_STT_MODEL_NAME,
-                "api_key": stt_config.HUGGING_FACE_HUB_TOKEN,
-                "model_device": stt_config.HUGGINGFACE_STT_MODEL_DEVICE,
+                "model_name": stt_config.HUGGINGFACE_STT_MODEL_NAME.value,
+                "api_key": config_composer.get_config_by_name("HUGGING_FACE_HUB_TOKEN").value,
+                "model_device": stt_config.HUGGINGFACE_STT_MODEL_DEVICE.value,
             }
 
         elif provider == "openai":
             return {
-                "api_key": stt_config.OPENAI_API_KEY,
-                "model": stt_config.OPENAI_STT_MODEL_NAME
+                "api_key": config_composer.get_config_by_name("OPENAI_API_KEY").value,
+                "model": stt_config.OPENAI_STT_MODEL_NAME.value
             }
 
         else:

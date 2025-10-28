@@ -7,7 +7,6 @@ from typing import Dict, Any
 import logging
 from service.tts.base_tts import BaseTTS
 from service.tts.zonos_tts import ZonosTTS
-from service.redis.config_utils import get_tts_config
 
 logger = logging.getLogger("tts.factory")
 
@@ -24,12 +23,12 @@ class TTSFactory:
     _last_config_hash = None
 
     @classmethod
-    def create_tts_client(cls) -> BaseTTS:
-        tts_config = get_tts_config()
-        provider = tts_config.TTS_PROVIDER.lower()
+    def create_tts_client(cls, config_composer) -> BaseTTS:
+        tts_config = config_composer.get_config_by_category_name("tts")
+        provider = tts_config.TTS_PROVIDER.value.lower()
 
         # 설정 해시 생성 (설정이 변경되었는지 확인용)
-        config_hash = cls._generate_config_hash(provider, tts_config)
+        config_hash = cls._generate_config_hash(provider, config_composer)
 
         # 기존 인스턴스가 있고 설정이 동일하면 재사용
         if cls._instance is not None and cls._last_config_hash == config_hash:
@@ -45,7 +44,7 @@ class TTSFactory:
             available_providers = list(cls.PROVIDERS.keys())
             raise ValueError(f"Unsupported TTS provider: {provider}. Available: {available_providers}")
 
-        config = cls._prepare_config(provider, tts_config)
+        config = cls._prepare_config(provider, config_composer)
 
         try:
             tts_class = cls.PROVIDERS[provider]
@@ -66,30 +65,34 @@ class TTSFactory:
             raise
 
     @classmethod
-    def _generate_config_hash(cls, provider: str, tts_config) -> str:
+    def _generate_config_hash(cls, provider: str, config_composer) -> str:
         """설정 변경 감지를 위한 해시 생성"""
+        tts_config = config_composer.get_config_by_category_name("tts")
+
         if provider == "zonos":
-            config_str = f"{provider}:{tts_config.ZONOS_TTS_MODEL_NAME}:{tts_config.ZONOS_TTS_MODEL_DEVICE}"
+            config_str = f"{provider}:{tts_config.ZONOS_TTS_MODEL_NAME.value}:{tts_config.ZONOS_TTS_MODEL_DEVICE.value}"
         elif provider == "openai":
-            config_str = f"{provider}:{tts_config.OPENAI_API_KEY}:{tts_config.OPENAI_TTS_MODEL_NAME}"
+            config_str = f"{provider}:{config_composer.get_config_by_name('OPENAI_API_KEY').value}:{tts_config.OPENAI_TTS_MODEL_NAME.value}"
         else:
             config_str = provider
 
         return str(hash(config_str))
 
     @classmethod
-    def _prepare_config(cls, provider: str, tts_config) -> Dict[str, Any]:
+    def _prepare_config(cls, provider: str, config_composer) -> Dict[str, Any]:
+        tts_config = config_composer.get_config_by_category_name("tts")
+
         if provider == "zonos":
             return {
-                "model_name": tts_config.ZONOS_TTS_MODEL_NAME,
-                "model_device": tts_config.ZONOS_TTS_MODEL_DEVICE,
-                "default_speaker": tts_config.ZONOS_TTS_DEFAULT_SPEAKER
+                "model_name": tts_config.ZONOS_TTS_MODEL_NAME.value,
+                "model_device": tts_config.ZONOS_TTS_MODEL_DEVICE.value,
+                "default_speaker": tts_config.ZONOS_TTS_DEFAULT_SPEAKER.value
             }
 
         elif provider == "openai":
             return {
-                "api_key": tts_config.OPENAI_API_KEY,
-                "model": tts_config.OPENAI_TTS_MODEL_NAME
+                "api_key": config_composer.get_config_by_name("OPENAI_API_KEY").value,
+                "model": tts_config.OPENAI_TTS_MODEL_NAME.value
             }
 
         else:

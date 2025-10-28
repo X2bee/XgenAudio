@@ -10,10 +10,11 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from service.tts.tts_factory import TTSFactory
-from controller.helper.singletonHelper import get_tts_service
-from service.redis.config_utils import get_config_value
+from controller.helper.singletonHelper import get_tts_service, get_config_composer
 import io
-
+from service.tts.tts_factory import TTSFactory
+from service.database.logger_helper import create_logger
+from controller.helper.controllerHelper import extract_user_id_from_request
 logger = logging.getLogger("controller.tts")
 
 # TTS 요청 모델
@@ -44,14 +45,15 @@ router = APIRouter(
 class TTSController:
     """TTS 컨트롤러"""
 
-    def __init__(self):
+    def __init__(self, config_composer):
+        self.config_composer = config_composer
         self._tts_client = None
 
     def _get_tts_client(self):
         """TTS 클라이언트 가져오기 (지연 로딩)"""
         if self._tts_client is None:
             try:
-                self._tts_client = TTSFactory.create_tts_client()
+                self._tts_client = TTSFactory.create_tts_client(self.config_composer)
             except (ImportError, ValueError, RuntimeError) as e:
                 logger.error("Failed to create TTS client: %s", e)
                 raise HTTPException(status_code=500, detail=f"TTS service initialization failed: {str(e)}") from e
@@ -176,6 +178,9 @@ async def generate_speech(
     Returns:
         오디오 파일 (streaming response)
     """
+    user_id = extract_user_id_from_request(request)
+    backend_log = create_logger(request, user_id)
+
     try:
         tts_controller = get_tts_service(request)
         audio_data = await tts_controller.generate_speech(
@@ -193,7 +198,9 @@ async def generate_speech(
         }
         media_type = media_type_map.get(tts_request.output_format.lower(), "audio/wav")
 
-        logger.info("TTS generation completed successfully")
+        backend_log.success("TTS generation completed successfully",
+                          metadata={"text_length": len(tts_request.text), "speaker": tts_request.speaker,
+                                  "output_format": tts_request.output_format, "audio_size": len(audio_data)})
 
         # 스트리밍 응답으로 반환
         return StreamingResponse(
@@ -207,6 +214,8 @@ async def generate_speech(
     except HTTPException:
         raise
     except Exception as e:
+        backend_log.error("Unexpected error in TTS generation", exception=e,
+                         metadata={"text_length": len(tts_request.text), "output_format": tts_request.output_format})
         logger.error("Unexpected error in TTS generation: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error during TTS generation") from e
 
@@ -236,9 +245,10 @@ async def get_tts_simple_status(request: Request):
         TTS 서비스 상태 정보
     """
     try:
+        config_composer = get_config_composer(request)
         tts_service = get_tts_service(request)
         provider_info = tts_service.get_provider_info()
-        is_available = get_config_value("tts.IS_AVAILABLE_TTS", default=False)
+        is_available = config_composer.get_config_by_name("IS_AVAILABLE_TTS").value
 
         return JSONResponse(content={
             "available": is_available,
@@ -258,13 +268,17 @@ async def get_tts_simple_status(request: Request):
 
 @router.post("/refresh")
 async def refresh_tts_factory(request: Request):
+    user_id = extract_user_id_from_request(request)
+    backend_log = create_logger(request, user_id)
+
     try:
-        is_available = get_config_value("tts.IS_AVAILABLE_TTS", default=False)
-        if is_available:
-            tts_client = TTSFactory.create_tts_client()
+        config_composer = get_config_composer(request)
+        if config_composer.get_config_by_name("IS_AVAILABLE_TTS").value:
+            tts_client = TTSFactory.create_tts_client(config_composer)
             request.app.state.tts_service = tts_client
 
-            logger.info("TTS configuration refreshed successfully")
+            backend_log.success("TTS configuration refreshed successfully",
+                              metadata={"tts_enabled": True})
             return {
                 "message": "TTS configuration refreshed successfully"
             }
@@ -273,6 +287,8 @@ async def refresh_tts_factory(request: Request):
                 try:
                     await request.app.state.tts_service.cleanup()
                 except Exception as cleanup_e:
+                    backend_log.warn("Error during existing TTS service cleanup",
+                                   metadata={"cleanup_error": str(cleanup_e)})
                     logger.warning(f"Error during existing TTS service cleanup: {cleanup_e}")
 
                 request.app.state.tts_service = None
@@ -281,11 +297,12 @@ async def refresh_tts_factory(request: Request):
             else:
                 request.app.state.tts_service = None
 
-            logger.info("TTS service disabled in configuration")
+            backend_log.info("TTS service disabled in configuration",
+                           metadata={"tts_enabled": False})
             return {
                 "message": "TTS service is disabled in configuration"
             }
 
     except Exception as e:
-        logger.error(f"Failed to refresh TTS config: {e}")
+        backend_log.error("Failed to refresh TTS config", exception=e)
         raise HTTPException(status_code=500, detail=f"Failed to refresh TTS config: {str(e)}")
